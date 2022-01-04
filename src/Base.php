@@ -2,6 +2,9 @@
 
 namespace HughCube\Base;
 
+/**
+ * @see https://www.php.net/manual/zh/function.base-convert.php
+ */
 class Base
 {
     public static function conv($numberInput, $fromBaseInput, $toBaseInput)
