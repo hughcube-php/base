@@ -27,6 +27,7 @@ class Base
                     bcmul(array_search($number[$i - 1], $fromBase), bcpow($fromLen, $numberLen - $i))
                 );
             }
+
             return $retval;
         }
         if ($fromBaseInput != '0123456789') {
@@ -41,6 +42,7 @@ class Base
             $retval = $toBase[bcmod($base10, $toLen)].$retval;
             $base10 = bcdiv($base10, $toLen, 0);
         }
+
         return $retval;
     }
 }
