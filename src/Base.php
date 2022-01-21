@@ -61,6 +61,6 @@ class Base
      */
     public static function digitalToString($digital): string
     {
-        return is_int($digital) ? gmp_strval(gmp_init($digital)) : $digital;
+        return is_numeric($digital) ? gmp_strval(gmp_init($digital)) : $digital;
     }
 }
