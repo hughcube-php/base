@@ -8,9 +8,10 @@ namespace HughCube\Base;
 class Base
 {
     /**
-     * @param  int|string  $numberInput
-     * @param  string  $fromBaseInput
-     * @param  string  $toBaseInput
+     * @param int|string $numberInput
+     * @param string     $fromBaseInput
+     * @param string     $toBaseInput
+     *
      * @return int|string
      */
     public static function conv($numberInput, string $fromBaseInput, string $toBaseInput)
@@ -56,7 +57,8 @@ class Base
     }
 
     /**
-     * @param  int|string  $digital
+     * @param int|string $digital
+     *
      * @return string
      */
     public static function digitalToString($digital): string
