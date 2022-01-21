@@ -7,11 +7,20 @@ namespace HughCube\Base;
  */
 class Base
 {
-    public static function conv($numberInput, $fromBaseInput, $toBaseInput)
+    /**
+     * @param  int|string  $numberInput
+     * @param  string  $fromBaseInput
+     * @param  string  $toBaseInput
+     * @return int|string
+     */
+    public static function conv($numberInput, string $fromBaseInput, string $toBaseInput)
     {
         if ($fromBaseInput == $toBaseInput) {
             return $numberInput;
         }
+
+        $numberInput = static::digitalToString($numberInput);
+
         $fromBase = str_split($fromBaseInput, 1);
         $toBase = str_split($toBaseInput, 1);
         $number = str_split($numberInput, 1);
@@ -44,5 +53,14 @@ class Base
         }
 
         return $retval;
+    }
+
+    /**
+     * @param  int|string  $digital
+     * @return string
+     */
+    public static function digitalToString($digital): string
+    {
+        return is_int($digital) ? gmp_strval(gmp_init($digital)) : $digital;
     }
 }
