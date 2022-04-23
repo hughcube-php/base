@@ -63,6 +63,10 @@ class Base
      */
     public static function digitalToString($digital): string
     {
+        if(!function_exists('gmp_strval') || !function_exists('gmp_init')){
+            return strval($digital);
+        }
+
         return is_numeric($digital) ? gmp_strval(gmp_init($digital)) : $digital;
     }
 }

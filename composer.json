@@ -10,8 +10,7 @@
     ],
     "require": {
         "php": ">=7.0",
-        "ext-bcmath": "*",
-        "ext-gmp": "*"
+        "ext-bcmath": "*"
     },
     "require-dev": {
         "phpunit/phpunit": "*",
