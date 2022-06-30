@@ -87,10 +87,8 @@ class Base
      */
     public static function toStringWithPad($digital, int $length = 30): string
     {
-        return substr(
-            str_pad(static::toString($digital), $length, '0', STR_PAD_LEFT),
-            0,
-            $length
-        );
+        $value = static::toString($digital);
+        $value = str_pad($value, $length, '0', STR_PAD_LEFT);
+        return substr($value, 0, $length);
     }
 }
