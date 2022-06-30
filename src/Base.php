@@ -8,9 +8,9 @@ namespace HughCube\Base;
 class Base
 {
     /**
-     * @param int|string $numberInput
-     * @param string     $fromBaseInput
-     * @param string     $toBaseInput
+     * @param  int|string  $numberInput
+     * @param  string  $fromBaseInput
+     * @param  string  $toBaseInput
      *
      * @return int|string
      */
@@ -20,7 +20,7 @@ class Base
             return $numberInput;
         }
 
-        $numberInput = static::digitalToString($numberInput);
+        $numberInput = static::toString($numberInput);
 
         $fromBase = str_split($fromBaseInput, 1);
         $toBase = str_split($toBaseInput, 1);
@@ -57,16 +57,40 @@ class Base
     }
 
     /**
-     * @param int|string $digital
-     *
+     * @param  int|string  $digital
      * @return string
      */
-    public static function digitalToString($digital): string
+    public static function toString($digital): string
     {
-        if(!function_exists('gmp_strval') || !function_exists('gmp_init')){
+        if (!function_exists('gmp_strval') || !function_exists('gmp_init')) {
             return strval($digital);
         }
 
         return is_numeric($digital) ? gmp_strval(gmp_init($digital)) : $digital;
+    }
+
+    /**
+     * @param  int|string  $digital
+     * @return string
+     * @deprecated 名字是在太长了
+     * @see Base::toString()
+     */
+    public static function digitalToString($digital): string
+    {
+        return static::toString($digital);
+    }
+
+    /**
+     * @param  int|string  $digital
+     * @param  int  $length
+     * @return string
+     */
+    public static function toStringWithPad($digital, int $length = 30): string
+    {
+        return substr(
+            str_pad(static::toString($digital), $length, '0', STR_PAD_LEFT),
+            0,
+            $length
+        );
     }
 }

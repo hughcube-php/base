@@ -7,7 +7,7 @@ use PHPUnit\Framework\TestCase;
 
 class BaseTest extends TestCase
 {
-    public function testBaseConv()
+    public function testBase()
     {
         $input = '1324523453243154324542341524315432113200203012';
         $from = '012345';
@@ -18,5 +18,11 @@ class BaseTest extends TestCase
 
         $value = Base::conv($value, $to, $from);
         $this->assertSame($value, $input);
+
+        $value = Base::toString(1000000);
+        $this->assertSame($value, '1000000');
+
+        $value = Base::toStringWithPad(1000000, 31);
+        $this->assertSame($value, '0000000000000000000000001000000');
     }
 }
