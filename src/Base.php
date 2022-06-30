@@ -8,9 +8,9 @@ namespace HughCube\Base;
 class Base
 {
     /**
-     * @param  int|string  $numberInput
-     * @param  string  $fromBaseInput
-     * @param  string  $toBaseInput
+     * @param int|string $numberInput
+     * @param string     $fromBaseInput
+     * @param string     $toBaseInput
      *
      * @return int|string
      */
@@ -57,7 +57,8 @@ class Base
     }
 
     /**
-     * @param  int|string  $digital
+     * @param int|string $digital
+     *
      * @return string
      */
     public static function toString($digital): string
@@ -70,8 +71,10 @@ class Base
     }
 
     /**
-     * @param  int|string  $digital
+     * @param int|string $digital
+     *
      * @return string
+     *
      * @deprecated 名字是在太长了
      * @see Base::toString()
      */
@@ -81,14 +84,16 @@ class Base
     }
 
     /**
-     * @param  int|string  $digital
-     * @param  int  $length
+     * @param int|string $digital
+     * @param int        $length
+     *
      * @return string
      */
     public static function toStringWithPad($digital, int $length = 30): string
     {
         $value = static::toString($digital);
         $value = str_pad($value, $length, '0', STR_PAD_LEFT);
+
         return substr($value, 0, $length);
     }
 }
