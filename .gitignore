@@ -10,3 +10,4 @@ composer.lock
 phpunit.xml
 coverage.clover
 ocular.phar
+phpunit.xml.dist

@@ -9,7 +9,7 @@ class BaseTest extends TestCase
 {
     public function testBase()
     {
-        $input = '1324523453243154324542341524315432113200203012';
+        $input = '01324523453243154324542341524315432113200203012';
         $from = '012345';
         $to = '0123456789ABCDEF';
 
@@ -17,7 +17,7 @@ class BaseTest extends TestCase
         $this->assertSame($value, '1F9881BAD10454A8C23A838EF00F50');
 
         $value = Base::conv($value, $to, $from);
-        $this->assertSame($value, $input);
+        $this->assertSame($value, ltrim($input, '0'));
 
         $value = Base::toString(1000000);
         $this->assertSame($value, '1000000');
