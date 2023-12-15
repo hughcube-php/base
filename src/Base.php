@@ -63,6 +63,10 @@ class Base
      */
     public static function toString($digital): string
     {
+        if(is_string($digital)){
+            return $digital;
+        }
+
         if (!function_exists('gmp_strval') || !function_exists('gmp_init')) {
             return strval($digital);
         }
