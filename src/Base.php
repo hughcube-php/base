@@ -63,7 +63,7 @@ class Base
      */
     public static function toString($digital): string
     {
-        if(is_string($digital)){
+        if (is_string($digital)) {
             return $digital;
         }
 
