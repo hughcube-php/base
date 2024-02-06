@@ -12,12 +12,12 @@ class Base
      * @param string     $fromBaseInput
      * @param string     $toBaseInput
      *
-     * @return int|string
+     * @return string
      */
     public static function conv($numberInput, string $fromBaseInput, string $toBaseInput)
     {
         if ($fromBaseInput == $toBaseInput) {
-            return $numberInput;
+            return static::toString($numberInput);
         }
 
         $numberInput = static::toString($numberInput);
