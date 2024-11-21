@@ -12,10 +12,14 @@ class Base
      * @param string     $fromBaseInput
      * @param string     $toBaseInput
      *
-     * @return string
+     * @return null|string
      */
     public static function conv($numberInput, string $fromBaseInput, string $toBaseInput)
     {
+        if(null === $numberInput){
+            return null;
+        }
+
         if ($fromBaseInput == $toBaseInput) {
             return static::toString($numberInput);
         }
@@ -99,5 +103,29 @@ class Base
         $value = str_pad($value, $length, '0', STR_PAD_LEFT);
 
         return substr($value, 0, $length);
+    }
+
+    /**
+     * @param  int|string  $digital
+     * @return null|string
+     */
+    public static function to36($digital)
+    {
+        return static::conv($digital,
+            '0123456789',
+            '0123456789abcdefghijklmnopqrstuvwxyz'
+        );
+    }
+
+    /**
+     * @param  int|string  $digital
+     * @return null|string
+     */
+    public static function to62($digital)
+    {
+        return static::conv($digital,
+            '0123456789',
+            '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
+        );
     }
 }
