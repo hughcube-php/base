@@ -9,14 +9,14 @@ class Base
 {
     /**
      * @param int|string $numberInput
-     * @param string     $fromBaseInput
-     * @param string     $toBaseInput
+     * @param string $fromBaseInput
+     * @param string $toBaseInput
      *
      * @return null|string
      */
     public static function conv($numberInput, string $fromBaseInput, string $toBaseInput)
     {
-        if(null === $numberInput){
+        if (null === $numberInput) {
             return null;
         }
 
@@ -38,7 +38,12 @@ class Base
             for ($i = 1; $i <= $numberLen; $i++) {
                 $retval = bcadd(
                     $retval,
-                    bcmul(array_search($number[$i - 1], $fromBase), bcpow($fromLen, $numberLen - $i))
+                    bcmul(
+                        array_search($number[$i - 1], $fromBase),
+                        bcpow($fromLen, $numberLen - $i, 0),
+                        0
+                    ),
+                    0
                 );
             }
 
@@ -53,7 +58,7 @@ class Base
             return $toBase[$base10];
         }
         while ($base10 != '0') {
-            $retval = $toBase[bcmod($base10, $toLen)].$retval;
+            $retval = $toBase[bcmod($base10, $toLen, 0)] . $retval;
             $base10 = bcdiv($base10, $toLen, 0);
         }
 
@@ -93,7 +98,7 @@ class Base
 
     /**
      * @param int|string $digital
-     * @param int        $length
+     * @param int $length
      *
      * @return string
      */
@@ -106,7 +111,7 @@ class Base
     }
 
     /**
-     * @param  int|string  $digital
+     * @param int|string $digital
      * @return null|string
      */
     public static function to36($digital)
@@ -118,7 +123,7 @@ class Base
     }
 
     /**
-     * @param  int|string  $digital
+     * @param int|string $digital
      * @return null|string
      */
     public static function to62($digital)
