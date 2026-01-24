@@ -133,4 +133,9 @@ class Base
             '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
         );
     }
+
+    public static function isDigit($string): bool
+    {
+        return ctype_digit(static::toString($string));
+    }
 }

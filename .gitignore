@@ -11,3 +11,4 @@ phpunit.xml
 coverage.clover
 ocular.phar
 phpunit.xml.dist
+composer_version.txt
