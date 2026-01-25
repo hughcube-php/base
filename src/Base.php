@@ -2,6 +2,8 @@
 
 namespace HughCube\Base;
 
+use Throwable;
+
 /**
  * @see https://www.php.net/manual/zh/function.base-convert.php
  */
@@ -134,8 +136,42 @@ class Base
         );
     }
 
-    public static function isDigit($string): bool
+    /**
+     * 判断是否为整数（支持正数、负数、大整数字符串）
+     *
+     * @param mixed $value
+     * @return bool
+     */
+    public static function isInteger($value): bool
     {
-        return ctype_digit(static::toString($string));
+        if (is_int($value)) {
+            return true;
+        }
+
+        if (!is_string($value) && !is_numeric($value)) {
+            return false;
+        }
+
+        // float 类型处理
+        if (is_float($value)) {
+            // 超过 2^53 的 float 无法精确表示整数，返回 false
+            if (abs($value) > 9007199254740992) {
+                return false;
+            }
+
+            // 检查是否有小数部分
+            if (0 != fmod($value, 1.0)) {
+                return false;
+            }
+
+            // 使用 sprintf 避免科学计数法
+            $value = sprintf('%.0f', $value);
+        }
+
+        try {
+            return 1 === preg_match('/^-?[0-9]+$/', static::toString($value));
+        } catch (Throwable $e) {
+            return false;
+        }
     }
 }
