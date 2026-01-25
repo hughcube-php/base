@@ -12,3 +12,4 @@ coverage.clover
 ocular.phar
 phpunit.xml.dist
 composer_version.txt
+.claude/settings.local.json
