@@ -17,7 +17,7 @@ class Base
     protected static function splitChars(string $string): array
     {
         $result = @preg_split('//u', $string, -1, PREG_SPLIT_NO_EMPTY);
-        if (false !== $result) {
+        if (false !== $result && PREG_NO_ERROR === preg_last_error()) {
             return $result;
         }
 
@@ -191,7 +191,7 @@ class Base
             return strval($digital);
         }
 
-        if (static::hasGmp() && is_numeric($digital)) {
+        if (static::hasGmp() && !is_float($digital) && is_numeric($digital)) {
             return gmp_strval(gmp_init($digital));
         }
 
