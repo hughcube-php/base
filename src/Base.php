@@ -10,6 +10,52 @@ use Throwable;
 class Base
 {
     /**
+     * @param string $string
+     *
+     * @return string[]
+     */
+    protected static function splitChars(string $string): array
+    {
+        $result = @preg_split('//u', $string, -1, PREG_SPLIT_NO_EMPTY);
+        if (false !== $result) {
+            return $result;
+        }
+
+        return str_split($string, 1);
+    }
+
+    /**
+     * @return bool
+     */
+    protected static function hasGmp(): bool
+    {
+        static $result = null;
+        if (null === $result) {
+            $result = function_exists('gmp_init');
+        }
+        return $result;
+    }
+
+    /**
+     * 获取 GMP 原生字符表 (用于 gmp_init/gmp_strval 的快速路径)
+     *
+     * @param int $baseLen
+     *
+     * @return string
+     */
+    protected static function gmpAlphabet(int $baseLen): string
+    {
+        static $cache = [];
+        if (!isset($cache[$baseLen])) {
+            $full = $baseLen <= 36
+                ? '0123456789abcdefghijklmnopqrstuvwxyz'
+                : '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+            $cache[$baseLen] = substr($full, 0, $baseLen);
+        }
+        return $cache[$baseLen];
+    }
+
+    /**
      * @param int|string $numberInput
      * @param string $fromBaseInput
      * @param string $toBaseInput
@@ -28,43 +74,106 @@ class Base
 
         $numberInput = static::toString($numberInput);
 
-        $fromBase = str_split($fromBaseInput, 1);
-        $toBase = str_split($toBaseInput, 1);
-        $number = str_split($numberInput, 1);
-        $fromLen = strlen($fromBaseInput);
-        $toLen = strlen($toBaseInput);
-        $numberLen = strlen($numberInput);
-        $retval = '';
-        if ($toBaseInput == '0123456789') {
-            $retval = 0;
-            for ($i = 1; $i <= $numberLen; $i++) {
-                $retval = bcadd(
-                    $retval,
-                    bcmul(
-                        array_search($number[$i - 1], $fromBase),
-                        bcpow($fromLen, $numberLen - $i, 0),
-                        0
-                    ),
-                    0
-                );
-            }
-
-            return $retval;
-        }
         if ($fromBaseInput != '0123456789') {
-            $base10 = static::conv($numberInput, $fromBaseInput, '0123456789');
+            $base10 = static::baseToDecimal($numberInput, $fromBaseInput);
         } else {
             $base10 = $numberInput;
         }
-        if ($base10 < strlen($toBaseInput)) {
-            return $toBase[$base10];
-        }
-        while ($base10 != '0') {
-            $retval = $toBase[bcmod($base10, $toLen, 0)] . $retval;
-            $base10 = bcdiv($base10, $toLen, 0);
+
+        if ($toBaseInput == '0123456789') {
+            return $base10;
         }
 
-        return $retval;
+        return static::decimalToBase($base10, $toBaseInput);
+    }
+
+    /**
+     * @param string $number
+     * @param string $fromBase
+     *
+     * @return string
+     */
+    protected static function baseToDecimal(string $number, string $fromBase): string
+    {
+        $fromChars = static::splitChars($fromBase);
+        $baseLen = count($fromChars);
+        $isByteLevel = (strlen($fromBase) === $baseLen);
+
+        if (static::hasGmp()) {
+            // 快速路径: 进制 2-62 且为单字节字符集时, 用 gmp_init 在 C 层一次性完成解析
+            if ($baseLen >= 2 && $baseLen <= 62 && $isByteLevel) {
+                $gmpAlphabet = static::gmpAlphabet($baseLen);
+                $normalized = ($fromBase === $gmpAlphabet) ? $number : strtr($number, $fromBase, $gmpAlphabet);
+                return gmp_strval(gmp_init($normalized, $baseLen));
+            }
+
+            // 回退路径: 进制 > 62 或多字节字符集, 用 Horner 循环
+            $charMap = array_flip($fromChars);
+            $digits = $isByteLevel ? str_split($number, 1) : static::splitChars($number);
+            $result = gmp_init(0);
+            $gmpBase = gmp_init($baseLen);
+            foreach ($digits as $digit) {
+                $result = gmp_add(gmp_mul($result, $gmpBase), gmp_init($charMap[$digit]));
+            }
+            return gmp_strval($result);
+        }
+
+        // bcmath 回退
+        $charMap = array_flip($fromChars);
+        $digits = $isByteLevel ? str_split($number, 1) : static::splitChars($number);
+        $result = '0';
+        $strBaseLen = (string)$baseLen;
+        foreach ($digits as $digit) {
+            $result = bcadd(bcmul($result, $strBaseLen, 0), (string)$charMap[$digit], 0);
+        }
+        return $result;
+    }
+
+    /**
+     * @param string $base10
+     * @param string $toBase
+     *
+     * @return string
+     */
+    protected static function decimalToBase(string $base10, string $toBase): string
+    {
+        $chars = static::splitChars($toBase);
+        $baseLen = count($chars);
+
+        if (static::hasGmp()) {
+            $gmpVal = gmp_init($base10, 10);
+            if (gmp_sign($gmpVal) === 0) {
+                return $chars[0];
+            }
+
+            // 快速路径: 进制 2-62 且为单字节字符集时, 用 gmp_strval 在 C 层一次性完成转换
+            if ($baseLen >= 2 && $baseLen <= 62 && strlen($toBase) === $baseLen) {
+                $gmpAlphabet = static::gmpAlphabet($baseLen);
+                $gmpResult = gmp_strval($gmpVal, $baseLen);
+                return ($toBase === $gmpAlphabet) ? $gmpResult : strtr($gmpResult, $gmpAlphabet, $toBase);
+            }
+
+            // 回退路径: 进制 > 62 或多字节字符集, 用除法循环
+            $gmpBase = gmp_init($baseLen);
+            $result = '';
+            while (gmp_sign($gmpVal) > 0) {
+                list($gmpVal, $rem) = gmp_div_qr($gmpVal, $gmpBase);
+                $result = $chars[gmp_intval($rem)] . $result;
+            }
+            return $result;
+        }
+
+        // bcmath 回退
+        if (bccomp($base10, '0', 0) == 0) {
+            return $chars[0];
+        }
+        $result = '';
+        $strBaseLen = (string)$baseLen;
+        while (bccomp($base10, '0', 0) > 0) {
+            $result = $chars[intval(bcmod($base10, $strBaseLen, 0))] . $result;
+            $base10 = bcdiv($base10, $strBaseLen, 0);
+        }
+        return $result;
     }
 
     /**
@@ -78,11 +187,15 @@ class Base
             return $digital;
         }
 
-        if (!function_exists('gmp_strval') || !function_exists('gmp_init')) {
+        if (is_int($digital)) {
             return strval($digital);
         }
 
-        return is_numeric($digital) ? gmp_strval(gmp_init($digital)) : $digital;
+        if (static::hasGmp() && is_numeric($digital)) {
+            return gmp_strval(gmp_init($digital));
+        }
+
+        return strval($digital);
     }
 
     /**
@@ -132,7 +245,7 @@ class Base
     {
         return static::conv($digital,
             '0123456789',
-            '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
+            '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
         );
     }
 
@@ -169,7 +282,7 @@ class Base
         }
 
         try {
-            return 1 === preg_match('/^-?[0-9]+$/', static::toString($value));
+            return 1 === preg_match('/^-?[0-9]+$/D', static::toString($value));
         } catch (Throwable $e) {
             return false;
         }

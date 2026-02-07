@@ -10,13 +10,14 @@
     ],
     "require": {
         "php": ">=7.0",
-        "ext-ctype": "*",
-        "ext-bcmath": "*"
+        "ext-ctype": "*"
     },
     "require-dev": {
+        "ext-gmp": "*",
+        "ext-bcmath": "*",
+        "phpstan/phpstan": "*",
         "phpunit/phpunit": "*",
-        "squizlabs/php_codesniffer": "*",
-        "phpstan/phpstan": "*"
+        "squizlabs/php_codesniffer": "*"
     },
     "autoload": {
         "psr-4": {
