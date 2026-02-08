@@ -3,6 +3,7 @@
 namespace HughCube\Base;
 
 use InvalidArgumentException;
+use RuntimeException;
 use Throwable;
 
 /**
@@ -33,6 +34,22 @@ class Base
         static $result = null;
         if (null === $result) {
             $result = function_exists('gmp_init');
+        }
+        return $result;
+    }
+
+    /**
+     * @return bool
+     */
+    protected static function hasBcMath(): bool
+    {
+        static $result = null;
+        if (null === $result) {
+            $result = function_exists('bcadd')
+                && function_exists('bcmul')
+                && function_exists('bccomp')
+                && function_exists('bcdiv')
+                && function_exists('bcmod');
         }
         return $result;
     }
@@ -208,6 +225,10 @@ class Base
             return gmp_strval($result);
         }
 
+        if (!static::hasBcMath()) {
+            throw new RuntimeException('Conversion requires either ext-gmp or ext-bcmath.');
+        }
+
         // bcmath 回退
         $result = '0';
         $strBaseLen = (string)$meta['baseLen'];
@@ -252,6 +273,10 @@ class Base
                 $result = $meta['chars'][gmp_intval($rem)] . $result;
             }
             return $isNegative ? ('-' . $result) : $result;
+        }
+
+        if (!static::hasBcMath()) {
+            throw new RuntimeException('Conversion requires either ext-gmp or ext-bcmath.');
         }
 
         // bcmath 回退

@@ -5,6 +5,7 @@ namespace HughCube\Base\Tests;
 use HughCube\Base\Base;
 use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
+use RuntimeException;
 
 class BaseTest extends TestCase
 {
@@ -3599,6 +3600,100 @@ class BaseTest extends TestCase
                 $this->assertTrue(true);
             }
         }
+    }
+
+    public function testConvFallsBackToBcmathWhenGmpIsDisabled()
+    {
+        if (!function_exists('bcadd')) {
+            $this->markTestSkipped('ext-bcmath not available.');
+        }
+
+        $class = get_class(new class extends Base {
+            protected static function hasGmp(): bool
+            {
+                return false;
+            }
+        });
+
+        $dec = '0123456789';
+        $hex = '0123456789abcdef';
+
+        $this->assertSame('ff', $class::conv('255', $dec, $hex));
+        $this->assertSame('255', $class::conv('ff', $hex, $dec));
+    }
+
+    public function testConvThrowsRuntimeExceptionWhenNoMathExtensionIsAvailable()
+    {
+        $class = get_class(new class extends Base {
+            protected static function hasGmp(): bool
+            {
+                return false;
+            }
+
+            protected static function hasBcMath(): bool
+            {
+                return false;
+            }
+        });
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('ext-gmp or ext-bcmath');
+        $class::conv('255', '0123456789', '0123456789abcdef');
+    }
+
+    public function testConvThrowsRuntimeExceptionWhenNoMathExtensionIsAvailableForSourceParsing()
+    {
+        $class = get_class(new class extends Base {
+            protected static function hasGmp(): bool
+            {
+                return false;
+            }
+
+            protected static function hasBcMath(): bool
+            {
+                return false;
+            }
+        });
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('ext-gmp or ext-bcmath');
+        $class::conv('ff', '0123456789abcdef', '0123456789');
+    }
+
+    public function testConvSameBaseDoesNotRequireMathExtension()
+    {
+        $class = get_class(new class extends Base {
+            protected static function hasGmp(): bool
+            {
+                return false;
+            }
+
+            protected static function hasBcMath(): bool
+            {
+                return false;
+            }
+        });
+
+        $dec = '0123456789';
+        $this->assertSame('+000123', $class::conv('+000123', $dec, $dec));
+    }
+
+    public function testIsIntegerStringEdgeFormats()
+    {
+        $this->assertFalse(Base::isInteger('1e3'));
+        $this->assertFalse(Base::isInteger('+123'));
+        $this->assertTrue(Base::isInteger('000123'));
+    }
+
+    public function testDigitalToStringAlias()
+    {
+        $this->assertSame('123', Base::digitalToString(123));
+        $this->assertSame('-456', Base::digitalToString('-456'));
+    }
+
+    public function testToStringWithPadTruncateBehaviorForLongInput()
+    {
+        $this->assertSame('123', Base::toStringWithPad('123456', 3));
     }
 
     public static function invalidDecimalNumberProvider(): array
