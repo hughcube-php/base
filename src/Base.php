@@ -49,7 +49,7 @@ class Base
                 && function_exists('bcmul')
                 && function_exists('bccomp')
                 && function_exists('bcdiv')
-                && function_exists('bcmod');
+                && function_exists('bcsub');
         }
         return $result;
     }
@@ -283,8 +283,10 @@ class Base
         $result = '';
         $strBaseLen = (string)$meta['baseLen'];
         while (bccomp($base10, '0', 0) > 0) {
-            $result = $meta['chars'][intval(bcmod($base10, $strBaseLen, 0))] . $result;
-            $base10 = bcdiv($base10, $strBaseLen, 0);
+            $quotient = bcdiv($base10, $strBaseLen, 0);
+            $mod = bcsub($base10, bcmul($quotient, $strBaseLen, 0), 0);
+            $result = $meta['chars'][intval($mod)] . $result;
+            $base10 = $quotient;
         }
         return $isNegative ? ('-' . $result) : $result;
     }
