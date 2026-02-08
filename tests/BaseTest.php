@@ -3,6 +3,7 @@
 namespace HughCube\Base\Tests;
 
 use HughCube\Base\Base;
+use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
 
 class BaseTest extends TestCase
@@ -3396,5 +3397,229 @@ class BaseTest extends TestCase
                 );
             }
         }
+    }
+
+    public function testConvNegativeNumbers()
+    {
+        $dec = '0123456789';
+        $hex = '0123456789abcdef';
+        $bin = '01';
+        $b62 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+
+        $this->assertSame('-ff', Base::conv('-255', $dec, $hex));
+        $this->assertSame('-255', Base::conv('-ff', $hex, $dec));
+        $this->assertSame('-a', Base::conv('-1010', $bin, $hex));
+        $this->assertSame('-1010', Base::conv('-a', $hex, $bin));
+        $this->assertSame('-47', Base::conv('-255', $dec, $b62));
+        $this->assertSame('0', Base::conv('-0', $dec, $hex));
+    }
+
+    public function testConvBaseContainingSignCharacter()
+    {
+        $dec = '0123456789';
+        $base3 = '-01';
+
+        // 回归: 字符集包含 '-' 时, '-' 应按普通数字字符处理而不是负号
+        $this->assertSame('0', Base::conv('-', $base3, $dec));
+        $this->assertSame('1', Base::conv('0', $base3, $dec));
+        $this->assertSame('-', Base::conv('0', $dec, $base3));
+    }
+
+    public function testConvInvalidSourceDigitThrowsException()
+    {
+        $this->expectException(InvalidArgumentException::class);
+        Base::conv('102', '01', '0123456789');
+    }
+
+    public function testConvInvalidSourceBaseLengthThrowsException()
+    {
+        $this->expectException(InvalidArgumentException::class);
+        Base::conv('000', '0', '0123456789');
+    }
+
+    public function testConvInvalidTargetBaseLengthThrowsException()
+    {
+        $this->expectException(InvalidArgumentException::class);
+        Base::conv('10', '0123456789', '0');
+    }
+
+    public function testConvDuplicateBaseCharsetThrowsException()
+    {
+        $this->expectException(InvalidArgumentException::class);
+        Base::conv('10', '0123456789', '0012');
+    }
+
+    public function testConvEmptyAndSignOnlyInputThrowsException()
+    {
+        try {
+            Base::conv('', '0123456789', '01');
+            $this->fail('Expected InvalidArgumentException for empty input.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('empty', $e->getMessage());
+        }
+
+        $this->expectException(InvalidArgumentException::class);
+        Base::conv('-', '0123456789', '01');
+    }
+
+    public function testConvPositiveSignNumbers()
+    {
+        $dec = '0123456789';
+        $hex = '0123456789abcdef';
+        $bin = '01';
+
+        $this->assertSame('ff', Base::conv('+255', $dec, $hex));
+        $this->assertSame('255', Base::conv('+ff', $hex, $dec));
+        $this->assertSame('10', Base::conv('+1010', $bin, $dec));
+        $this->assertSame('1010', Base::conv('+10', $dec, $bin));
+    }
+
+    public function testConvSignedRoundTrip()
+    {
+        $dec = '0123456789';
+        $hex = '0123456789abcdef';
+        $b62 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+
+        $values = ['-1', '-2', '-10', '-255', '-65535', '-18446744073709551615'];
+        foreach ($values as $value) {
+            $toHex = Base::conv($value, $dec, $hex);
+            $this->assertSame($value, Base::conv($toHex, $hex, $dec), "signed hex round-trip: {$value}");
+
+            $to62 = Base::conv($value, $dec, $b62);
+            $this->assertSame($value, Base::conv($to62, $b62, $dec), "signed b62 round-trip: {$value}");
+        }
+    }
+
+    public function testConvZeroSignNormalization()
+    {
+        $dec = '0123456789';
+        $hex = '0123456789abcdef';
+
+        $this->assertSame('0', Base::conv('+0', $dec, $hex));
+        $this->assertSame('0', Base::conv('-0', $dec, $hex));
+        $this->assertSame('0', Base::conv('+0000', $dec, $hex));
+        $this->assertSame('0', Base::conv('-0000', $dec, $hex));
+        $this->assertSame('+0000', Base::conv('+0000', $dec, $dec));
+    }
+
+    public function testConvNonDecimalNegativeZeroNormalization()
+    {
+        $hex = '0123456789abcdef';
+        $dec = '0123456789';
+        $bin = '01';
+
+        $this->assertSame('0', Base::conv('-0000', $hex, $dec));
+        $this->assertSame('0', Base::conv('-0000', $hex, $bin));
+    }
+
+    public function testConvBaseContainingPlusCharacter()
+    {
+        $dec = '0123456789';
+        $base3 = '+01';
+
+        // 回归: 字符集包含 '+' 时, '+' 应按普通数字字符处理而不是正号
+        $this->assertSame('0', Base::conv('+', $base3, $dec));
+        $this->assertSame('1', Base::conv('+0', $base3, $dec));
+        $this->assertSame('+', Base::conv('0', $dec, $base3));
+    }
+
+    public function testConvMultibyteNegativeNumberRoundTrip()
+    {
+        $bases = self::highBaseCharsets();
+        $dec = $bases[10];
+        $b200 = $bases[200];
+
+        $encoded = Base::conv('-12345678901234567890', $dec, $b200);
+        $this->assertSame('-', substr($encoded, 0, 1));
+        $this->assertSame('-12345678901234567890', Base::conv($encoded, $b200, $dec));
+    }
+
+    public function testConvInvalidMultibyteSourceDigitThrowsException()
+    {
+        $this->expectException(InvalidArgumentException::class);
+        Base::conv('甲丁', '甲乙丙', '0123456789');
+    }
+
+    public function testConvDuplicateMultibyteBaseThrowsException()
+    {
+        $this->expectException(InvalidArgumentException::class);
+        Base::conv('10', '0123456789', '甲乙甲');
+    }
+
+    public function testConvBooleanInputBoundary()
+    {
+        $dec = '0123456789';
+        $hex = '0123456789abcdef';
+
+        // true 会转为字符串 "1"
+        $this->assertSame('1', Base::conv(true, $dec, $hex));
+
+        // false 会转为空字符串, 应抛异常
+        $this->expectException(InvalidArgumentException::class);
+        Base::conv(false, $dec, $hex);
+    }
+
+    public function testConvSignedInvalidDigitThrowsException()
+    {
+        $this->expectException(InvalidArgumentException::class);
+        Base::conv('-g', '0123456789abcdef', '0123456789');
+    }
+
+    public function testTo36AndTo62WithSignedInput()
+    {
+        $this->assertSame('-z', Base::to36('-35'));
+        $this->assertSame('-10', Base::to36('-36'));
+        $this->assertSame('10', Base::to36('+36'));
+
+        $this->assertSame('-z', Base::to62('-61'));
+        $this->assertSame('-10', Base::to62('-62'));
+        $this->assertSame('10', Base::to62('+62'));
+    }
+
+    public function testTo36InvalidInputThrowsException()
+    {
+        $this->expectException(InvalidArgumentException::class);
+        Base::to36('1e3');
+    }
+
+    public function testTo62InvalidInputThrowsException()
+    {
+        $this->expectException(InvalidArgumentException::class);
+        Base::to62('12.34');
+    }
+
+    public function testConvInvalidDecimalFormatsThrowException()
+    {
+        foreach (self::invalidDecimalNumberProvider() as $case) {
+            $input = $case[0];
+            try {
+                Base::conv($input, '0123456789', '0123456789abcdef');
+                $this->fail("Expected InvalidArgumentException for invalid decimal input: '{$input}'");
+            } catch (InvalidArgumentException $e) {
+                $this->assertTrue(true);
+            }
+        }
+    }
+
+    public static function invalidDecimalNumberProvider(): array
+    {
+        return [
+            [''],
+            [' '],
+            ['1e3'],
+            ['12.0'],
+            ['12.34'],
+            [' 12'],
+            ['12 '],
+            ['+'],
+            ['++1'],
+            ['--1'],
+            ['+-1'],
+            ['0x10'],
+            ['1_000'],
+            ['1,000'],
+            ['NaN'],
+            ['INF'],
+        ];
     }
 }

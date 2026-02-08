@@ -2,6 +2,7 @@
 
 namespace HughCube\Base;
 
+use InvalidArgumentException;
 use Throwable;
 
 /**
@@ -56,7 +57,83 @@ class Base
     }
 
     /**
-     * @param int|string $numberInput
+     * @param string $base
+     *
+     * @return array{chars: string[], charMap: array<string, int>, baseLen: int, isByteLevel: bool}
+     */
+    protected static function baseMeta(string $base): array
+    {
+        static $cache = [];
+        if (!array_key_exists($base, $cache)) {
+            $chars = static::splitChars($base);
+            $baseLen = count($chars);
+            if ($baseLen < 2) {
+                throw new InvalidArgumentException('Base alphabet must contain at least two unique characters.');
+            }
+
+            $charMap = [];
+            foreach ($chars as $index => $char) {
+                if (isset($charMap[$char])) {
+                    throw new InvalidArgumentException('Base alphabet characters must be unique.');
+                }
+                $charMap[$char] = $index;
+            }
+
+            $cache[$base] = [
+                'chars' => $chars,
+                'charMap' => $charMap,
+                'baseLen' => $baseLen,
+                'isByteLevel' => (strlen($base) === $baseLen),
+            ];
+        }
+
+        return $cache[$base];
+    }
+
+    /**
+     * @param string $number
+     * @param string $base
+     *
+     * @return array{0: string, 1: bool}
+     */
+    protected static function splitSignedNumber(string $number, string $base = ''): array
+    {
+        if ('' === $number) {
+            throw new InvalidArgumentException('Number input cannot be empty.');
+        }
+
+        $first = substr($number, 0, 1);
+        if (
+            ('-' === $first || '+' === $first)
+            && ('' === $base || false === strpos($base, $first))
+        ) {
+            $number = substr($number, 1);
+            if ('' === $number) {
+                throw new InvalidArgumentException('Number input must contain digits.');
+            }
+            return [$number, '-' === $first];
+        }
+
+        return [$number, false];
+    }
+
+    /**
+     * @param string $number
+     *
+     * @return string
+     */
+    protected static function normalizeDecimalNumber(string $number): string
+    {
+        if (1 !== preg_match('/^[0-9]+$/D', $number)) {
+            throw new InvalidArgumentException('Decimal number must contain only digits.');
+        }
+
+        $normalized = ltrim($number, '0');
+        return '' === $normalized ? '0' : $normalized;
+    }
+
+    /**
+     * @param mixed $numberInput
      * @param string $fromBaseInput
      * @param string $toBaseInput
      *
@@ -73,11 +150,16 @@ class Base
         }
 
         $numberInput = static::toString($numberInput);
+        list($numberInput, $isNegative) = static::splitSignedNumber($numberInput, $fromBaseInput);
 
         if ($fromBaseInput != '0123456789') {
             $base10 = static::baseToDecimal($numberInput, $fromBaseInput);
         } else {
-            $base10 = $numberInput;
+            $base10 = static::normalizeDecimalNumber($numberInput);
+        }
+
+        if ($isNegative && '0' !== $base10) {
+            $base10 = '-' . $base10;
         }
 
         if ($toBaseInput == '0123456789') {
@@ -95,36 +177,42 @@ class Base
      */
     protected static function baseToDecimal(string $number, string $fromBase): string
     {
-        $fromChars = static::splitChars($fromBase);
-        $baseLen = count($fromChars);
-        $isByteLevel = (strlen($fromBase) === $baseLen);
+        $meta = static::baseMeta($fromBase);
+        $digits = $meta['isByteLevel'] ? str_split($number, 1) : static::splitChars($number);
+        if ([] === $digits) {
+            throw new InvalidArgumentException('Number input must contain digits.');
+        }
+
+        $digitValues = [];
+        foreach ($digits as $digit) {
+            if (!isset($meta['charMap'][$digit])) {
+                throw new InvalidArgumentException('Number contains a digit that is not defined in source base.');
+            }
+            $digitValues[] = $meta['charMap'][$digit];
+        }
 
         if (static::hasGmp()) {
             // 快速路径: 进制 2-62 且为单字节字符集时, 用 gmp_init 在 C 层一次性完成解析
-            if ($baseLen >= 2 && $baseLen <= 62 && $isByteLevel) {
-                $gmpAlphabet = static::gmpAlphabet($baseLen);
+            if ($meta['baseLen'] >= 2 && $meta['baseLen'] <= 62 && $meta['isByteLevel']) {
+                $gmpAlphabet = static::gmpAlphabet($meta['baseLen']);
                 $normalized = ($fromBase === $gmpAlphabet) ? $number : strtr($number, $fromBase, $gmpAlphabet);
-                return gmp_strval(gmp_init($normalized, $baseLen));
+                return gmp_strval(gmp_init($normalized, $meta['baseLen']));
             }
 
             // 回退路径: 进制 > 62 或多字节字符集, 用 Horner 循环
-            $charMap = array_flip($fromChars);
-            $digits = $isByteLevel ? str_split($number, 1) : static::splitChars($number);
             $result = gmp_init(0);
-            $gmpBase = gmp_init($baseLen);
-            foreach ($digits as $digit) {
-                $result = gmp_add(gmp_mul($result, $gmpBase), gmp_init($charMap[$digit]));
+            $gmpBase = gmp_init($meta['baseLen']);
+            foreach ($digitValues as $digitValue) {
+                $result = gmp_add(gmp_mul($result, $gmpBase), $digitValue);
             }
             return gmp_strval($result);
         }
 
         // bcmath 回退
-        $charMap = array_flip($fromChars);
-        $digits = $isByteLevel ? str_split($number, 1) : static::splitChars($number);
         $result = '0';
-        $strBaseLen = (string)$baseLen;
-        foreach ($digits as $digit) {
-            $result = bcadd(bcmul($result, $strBaseLen, 0), (string)$charMap[$digit], 0);
+        $strBaseLen = (string)$meta['baseLen'];
+        foreach ($digitValues as $digitValue) {
+            $result = bcadd(bcmul($result, $strBaseLen, 0), (string)$digitValue, 0);
         }
         return $result;
     }
@@ -137,47 +225,47 @@ class Base
      */
     protected static function decimalToBase(string $base10, string $toBase): string
     {
-        $chars = static::splitChars($toBase);
-        $baseLen = count($chars);
+        $meta = static::baseMeta($toBase);
+        list($base10, $isNegative) = static::splitSignedNumber($base10);
+        $base10 = static::normalizeDecimalNumber($base10);
+
+        if ('0' === $base10) {
+            return $meta['chars'][0];
+        }
 
         if (static::hasGmp()) {
             $gmpVal = gmp_init($base10, 10);
-            if (gmp_sign($gmpVal) === 0) {
-                return $chars[0];
-            }
 
             // 快速路径: 进制 2-62 且为单字节字符集时, 用 gmp_strval 在 C 层一次性完成转换
-            if ($baseLen >= 2 && $baseLen <= 62 && strlen($toBase) === $baseLen) {
-                $gmpAlphabet = static::gmpAlphabet($baseLen);
-                $gmpResult = gmp_strval($gmpVal, $baseLen);
-                return ($toBase === $gmpAlphabet) ? $gmpResult : strtr($gmpResult, $gmpAlphabet, $toBase);
+            if ($meta['baseLen'] >= 2 && $meta['baseLen'] <= 62 && $meta['isByteLevel']) {
+                $gmpAlphabet = static::gmpAlphabet($meta['baseLen']);
+                $gmpResult = gmp_strval($gmpVal, $meta['baseLen']);
+                $result = ($toBase === $gmpAlphabet) ? $gmpResult : strtr($gmpResult, $gmpAlphabet, $toBase);
+                return $isNegative ? ('-' . $result) : $result;
             }
 
             // 回退路径: 进制 > 62 或多字节字符集, 用除法循环
-            $gmpBase = gmp_init($baseLen);
+            $gmpBase = gmp_init($meta['baseLen']);
             $result = '';
             while (gmp_sign($gmpVal) > 0) {
                 list($gmpVal, $rem) = gmp_div_qr($gmpVal, $gmpBase);
-                $result = $chars[gmp_intval($rem)] . $result;
+                $result = $meta['chars'][gmp_intval($rem)] . $result;
             }
-            return $result;
+            return $isNegative ? ('-' . $result) : $result;
         }
 
         // bcmath 回退
-        if (bccomp($base10, '0', 0) == 0) {
-            return $chars[0];
-        }
         $result = '';
-        $strBaseLen = (string)$baseLen;
+        $strBaseLen = (string)$meta['baseLen'];
         while (bccomp($base10, '0', 0) > 0) {
-            $result = $chars[intval(bcmod($base10, $strBaseLen, 0))] . $result;
+            $result = $meta['chars'][intval(bcmod($base10, $strBaseLen, 0))] . $result;
             $base10 = bcdiv($base10, $strBaseLen, 0);
         }
-        return $result;
+        return $isNegative ? ('-' . $result) : $result;
     }
 
     /**
-     * @param int|string $digital
+     * @param mixed $digital
      *
      * @return string
      */
@@ -191,15 +279,11 @@ class Base
             return strval($digital);
         }
 
-        if (static::hasGmp() && !is_float($digital) && is_numeric($digital)) {
-            return gmp_strval(gmp_init($digital));
-        }
-
         return strval($digital);
     }
 
     /**
-     * @param int|string $digital
+     * @param mixed $digital
      *
      * @return string
      *
@@ -212,7 +296,7 @@ class Base
     }
 
     /**
-     * @param int|string $digital
+     * @param mixed $digital
      * @param int $length
      *
      * @return string
@@ -226,7 +310,7 @@ class Base
     }
 
     /**
-     * @param int|string $digital
+     * @param mixed $digital
      * @return null|string
      */
     public static function to36($digital)
@@ -238,7 +322,7 @@ class Base
     }
 
     /**
-     * @param int|string $digital
+     * @param mixed $digital
      * @return null|string
      */
     public static function to62($digital)

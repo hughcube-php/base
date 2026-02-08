@@ -1,0 +1,65 @@
+name: Test
+
+on: [ push, pull_request ]
+
+jobs:
+  run-linux:
+    runs-on: ubuntu-latest
+    strategy:
+      max-parallel: 15
+      matrix: &matrix
+        php: [ 7.0, 7.1, 7.2, 7.3, 7.4, 8.0, 8.1, 8.2, 8.3, 8.4, 8.5 ]
+    name: PHP ${{ matrix.php }} Test on ubuntu-latest
+    steps: &common_steps
+      - name: Checkout
+        uses: actions/checkout@master
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@master
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: mbstring, xdebug, ctype, bcmath, gmp
+          tools: composer:v2
+
+      - name: System Setting
+        run: |
+          php -v
+          composer -V
+          php -m
+
+      - name: Validate composer.json and composer.lock
+        run: composer validate
+
+      - name: Install dependencies
+        run: |
+          echo "has_deps=false" >> "$GITHUB_ENV"
+          composer update --prefer-stable --prefer-dist --no-interaction --no-progress
+          echo "has_deps=true" >> "$GITHUB_ENV"
+        continue-on-error: true
+
+      - name: Composer Info
+        if: ${{ 'true' == env.has_deps }}
+        run: composer info
+
+      - name: Run PHPUnit
+        if: ${{ 'true' == env.has_deps }}
+        run: composer run-script test
+
+  run-macos:
+    runs-on: macOS-latest
+    strategy:
+      max-parallel: 15
+      matrix: *matrix
+    name: PHP ${{ matrix.php }} Test on macOS-latest
+    steps: *common_steps
+
+  run-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      max-parallel: 15
+      matrix: *matrix
+    name: PHP ${{ matrix.php }} Test on windows-latest
+    steps: *common_steps
