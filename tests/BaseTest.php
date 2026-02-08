@@ -3455,7 +3455,7 @@ class BaseTest extends TestCase
             Base::conv('', '0123456789', '01');
             $this->fail('Expected InvalidArgumentException for empty input.');
         } catch (InvalidArgumentException $e) {
-            $this->assertStringContainsString('empty', $e->getMessage());
+            $this->assertNotFalse(strpos($e->getMessage(), 'empty'));
         }
 
         $this->expectException(InvalidArgumentException::class);
