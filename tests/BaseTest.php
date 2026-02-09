@@ -3922,6 +3922,235 @@ class BaseTest extends TestCase
         $this->assertSame(16, strlen($actual));
     }
 
+    public function testToStringFloatScientificNotationBoundary()
+    {
+        // strval 会在15位以上有效数字时输出科学计数法
+        // toString 必须在所有 case 下输出纯数字
+        $cases = [
+            // [float输入, 期望的纯数字字符串]
+            [1e14, '100000000000000'],
+            [1e15, '1000000000000000'],
+            [1e16, '10000000000000000'],
+            [1e17, '100000000000000000'],
+            [1e18, '1000000000000000000'],
+            [1770644663751071.0, '1770644663751071'],
+            [1234567890123456.0, '1234567890123456'],
+            [9999999999999998.0, '9999999999999998'],
+            [1000000000000001.0, '1000000000000001'],
+        ];
+
+        foreach ($cases as $pair) {
+            $float = $pair[0];
+            $expected = $pair[1];
+            $str = Base::toString($float);
+
+            // 不能包含科学计数法
+            $this->assertFalse(strpos($str, 'E') !== false, "toString({$expected})不应包含E, got: {$str}");
+            $this->assertFalse(strpos($str, 'e') !== false, "toString({$expected})不应包含e, got: {$str}");
+            // 值必须正确
+            $this->assertSame($expected, $str, "toString float {$expected}");
+        }
+    }
+
+    public function testToStringCarbonTimestampArithmetic()
+    {
+        // 业务中常见: 对 getPreciseTimestamp 结果做加减运算后再 toString
+        $c = Carbon::parse('2025-06-15 12:30:45.123456', 'UTC');
+        $ts = $c->getPreciseTimestamp(6);
+
+        // +1 微秒
+        $plus1 = Base::toString($ts + 1);
+        $this->assertSame(1, preg_match('/^\d{16}$/', $plus1), '+1微秒应为16位纯数字');
+
+        // -1 微秒
+        $minus1 = Base::toString($ts - 1);
+        $this->assertSame(1, preg_match('/^\d{16}$/', $minus1), '-1微秒应为16位纯数字');
+
+        // 单调性: -1 < 原值 < +1
+        $this->assertTrue($minus1 < Base::toString($ts));
+        $this->assertTrue(Base::toString($ts) < $plus1);
+
+        // 两个时间戳的差值
+        $c2 = Carbon::parse('2025-06-15 12:30:46.123456', 'UTC');
+        $diff = $c2->getPreciseTimestamp(6) - $ts;
+        $diffStr = Base::toString($diff);
+        $this->assertSame('1000000', $diffStr, '相差1秒=1000000微秒');
+
+        // +1000 毫秒
+        $plus1000ms = Base::toString($ts + 1000000);
+        $expected1s = $c2->format('U') . $c2->format('u');
+        $this->assertSame($expected1s, $plus1000ms);
+    }
+
+    public function testToStringCarbonJsonRoundTrip()
+    {
+        // 业务场景: 时间戳经过 JSON 序列化/反序列化后再 toString
+        $c = Carbon::parse('2025-06-15 12:30:45.123456', 'UTC');
+        $expected = $c->format('U') . $c->format('u');
+        $ts = $c->getPreciseTimestamp(6);
+
+        // json_encode float -> json_decode 可能返回 int 或 float
+        $decoded = json_decode(json_encode($ts));
+        $str = Base::toString($decoded);
+        $this->assertSame($expected, $str, 'JSON round-trip后toString应与format基准一致');
+
+        // json_encode 包在对象里
+        $json = json_encode(['ts' => $ts]);
+        $obj = json_decode($json, true);
+        $str2 = Base::toString($obj['ts']);
+        $this->assertSame($expected, $str2, 'JSON对象round-trip后toString应与format基准一致');
+    }
+
+    public function testToStringCarbonTypeCasting()
+    {
+        // 业务场景: 时间戳被意外类型转换后再 toString
+        $c = Carbon::parse('2025-06-15 12:30:45.000000', 'UTC');
+        $expected = $c->format('U') . $c->format('u');
+        $ts = $c->getPreciseTimestamp(6);
+
+        // (int) 强转: 当前时间戳在 PHP_INT_MAX 范围内, 不会溢出
+        $this->assertTrue($ts < PHP_INT_MAX);
+        $intTs = (int)$ts;
+        $this->assertSame($expected, Base::toString($intTs), '(int)强转后toString应一致');
+
+        // (string) 强转后再传入
+        $strTs = (string)(int)$ts;
+        $this->assertSame($expected, Base::toString($strTs), '(string)(int)强转后toString应一致');
+
+        // 从数据库取出的字符串形式
+        $dbValue = $expected;
+        $this->assertSame($expected, Base::toString($dbValue), '字符串形式直接传入应原样返回');
+    }
+
+    public function testToStringCarbonStringComparison()
+    {
+        // 关键业务场景: toString 结果用于字符串比较排序
+        // 同一秒内的微秒时间戳, 字符串比较顺序必须等于数值顺序
+        $c1 = Carbon::parse('2025-06-15 12:30:45.000001', 'UTC');
+        $c2 = Carbon::parse('2025-06-15 12:30:45.000002', 'UTC');
+        $c3 = Carbon::parse('2025-06-15 12:30:45.999999', 'UTC');
+        $c4 = Carbon::parse('2025-06-15 12:30:46.000000', 'UTC');
+
+        $s1 = Base::toString($c1->getPreciseTimestamp(6));
+        $s2 = Base::toString($c2->getPreciseTimestamp(6));
+        $s3 = Base::toString($c3->getPreciseTimestamp(6));
+        $s4 = Base::toString($c4->getPreciseTimestamp(6));
+
+        // 字符串比较顺序 = 时间顺序
+        $this->assertTrue($s1 < $s2, 's1 < s2');
+        $this->assertTrue($s2 < $s3, 's2 < s3');
+        $this->assertTrue($s3 < $s4, 's3 < s4');
+
+        // 长度一致, 可以安全做字符串排序
+        $this->assertSame(strlen($s1), strlen($s2));
+        $this->assertSame(strlen($s2), strlen($s3));
+        $this->assertSame(strlen($s3), strlen($s4));
+    }
+
+    public function testToStringCarbonMicrosecondBoundaries()
+    {
+        // 微秒的每个边界值: .000000, .000001, .500000, .999998, .999999
+        $boundaries = [
+            ['2025-01-01 00:00:00.000000', '000000'],
+            ['2025-01-01 00:00:00.000001', '000001'],
+            ['2025-01-01 00:00:00.000010', '000010'],
+            ['2025-01-01 00:00:00.000100', '000100'],
+            ['2025-01-01 00:00:00.001000', '001000'],
+            ['2025-01-01 00:00:00.010000', '010000'],
+            ['2025-01-01 00:00:00.100000', '100000'],
+            ['2025-01-01 00:00:00.500000', '500000'],
+            ['2025-01-01 00:00:00.999998', '999998'],
+            ['2025-01-01 00:00:00.999999', '999999'],
+        ];
+
+        foreach ($boundaries as $pair) {
+            $ts = $pair[0];
+            $expectUs = $pair[1];
+            $c = Carbon::parse($ts, 'UTC');
+            $expected = $c->format('U') . $expectUs;
+            $actual = Base::toString($c->getPreciseTimestamp(6));
+            $this->assertSame($expected, $actual, "微秒边界 {$ts} 不一致");
+        }
+    }
+
+    public function testToStringCarbonYear2038()
+    {
+        // 2038年问题: 32位系统 Unix 时间戳溢出边界
+        $cases = [
+            '2038-01-19 03:14:06.999999',  // 溢出前1秒
+            '2038-01-19 03:14:07.000000',  // 32位最大值 2147483647
+            '2038-01-19 03:14:07.999999',  // 32位最大值的最后一微秒
+            '2038-01-19 03:14:08.000000',  // 溢出后
+            '2050-01-01 00:00:00.123456',  // 远未来
+            '2100-12-31 23:59:59.999999',  // 更远未来
+        ];
+
+        foreach ($cases as $ts) {
+            $c = Carbon::parse($ts, 'UTC');
+            $expected = $c->format('U') . $c->format('u');
+            $actual = Base::toString($c->getPreciseTimestamp(6));
+            $this->assertSame($expected, $actual, "2038边界 {$ts} 不一致");
+            $this->assertSame(16, strlen($actual), "2038边界 {$ts} 应为16位");
+        }
+    }
+
+    public function testToStringCarbonDayBoundary()
+    {
+        // 日期跨天边界: 23:59:59.999999 -> 00:00:00.000000
+        $c1 = Carbon::parse('2025-06-15 23:59:59.999999', 'UTC');
+        $c2 = Carbon::parse('2025-06-16 00:00:00.000000', 'UTC');
+
+        $s1 = Base::toString($c1->getPreciseTimestamp(6));
+        $s2 = Base::toString($c2->getPreciseTimestamp(6));
+
+        $expected1 = $c1->format('U') . $c1->format('u');
+        $expected2 = $c2->format('U') . $c2->format('u');
+        $this->assertSame($expected1, $s1);
+        $this->assertSame($expected2, $s2);
+
+        // 差值恰好为1微秒
+        $diff = bcsub($s2, $s1, 0);
+        $this->assertSame('1', $diff, '跨天边界差值应为1微秒');
+    }
+
+    public function testToStringCarbonLeapSecond()
+    {
+        // 闰年2月29日
+        $c = Carbon::parse('2024-02-29 12:00:00.123456', 'UTC');
+        $expected = $c->format('U') . $c->format('u');
+        $actual = Base::toString($c->getPreciseTimestamp(6));
+        $this->assertSame($expected, $actual);
+
+        // 年末
+        $c2 = Carbon::parse('2024-12-31 23:59:59.999999', 'UTC');
+        $expected2 = $c2->format('U') . $c2->format('u');
+        $actual2 = Base::toString($c2->getPreciseTimestamp(6));
+        $this->assertSame($expected2, $actual2);
+    }
+
+    public function testToStringCarbonConvMultiBaseRoundTrip()
+    {
+        // 微秒时间戳在多种进制间互转, 全部无损
+        $c = Carbon::parse('2025-06-15 12:30:45.123456', 'UTC');
+        $expected = $c->format('U') . $c->format('u');
+        $str = Base::toString($c->getPreciseTimestamp(6));
+        $this->assertSame($expected, $str);
+
+        $dec = '0123456789';
+        $bin = '01';
+        $oct = '01234567';
+        $hex = '0123456789abcdef';
+        $b36 = '0123456789abcdefghijklmnopqrstuvwxyz';
+        $b62 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+
+        $bases = [$bin, $oct, $hex, $b36, $b62];
+        foreach ($bases as $base) {
+            $encoded = Base::conv($str, $dec, $base);
+            $decoded = Base::conv($encoded, $base, $dec);
+            $this->assertSame($str, $decoded, '进制转换往返应无损, base长度=' . strlen($base));
+        }
+    }
+
     public static function invalidDecimalNumberProvider(): array
     {
         return [
