@@ -3699,50 +3699,227 @@ class BaseTest extends TestCase
 
     public function testToStringCarbonGetPreciseTimestamp()
     {
+        // 用同一个 Carbon 实例的 format('U').format('u') 拼出字符串基准值
+        // 完全绕开 float, 作为无精度丢失的 ground truth
         $carbon = Carbon::now();
+        $expected = $carbon->format('U') . $carbon->format('u');
+        $actual = Base::toString($carbon->getPreciseTimestamp(6));
+        $this->assertSame($expected, $actual, 'toString应与Carbon format(U).format(u)完全一致');
 
-        // getPreciseTimestamp 返回 float, toString 转换后值不变
-        foreach ([0, 3, 6] as $precision) {
-            $float = $carbon->getPreciseTimestamp($precision);
-            $this->assertTrue(is_float($float));
-
-            $str = Base::toString($float);
-            $this->assertSame(1, preg_match('/^-?\d+$/', $str), "precision={$precision} toString结果应为纯数字");
-            // 转换回 float 后值必须一致, 证明 toString 无精度丢失
-            $this->assertSame($float, (float)$str, "precision={$precision} toString转换后值应与原始float一致");
+        // 多次采样验证一致性
+        for ($i = 0; $i < 10; $i++) {
+            $c = Carbon::now();
+            $expected = $c->format('U') . $c->format('u');
+            $actual = Base::toString($c->getPreciseTimestamp(6));
+            $this->assertSame($expected, $actual);
+            usleep(1000);
         }
 
-        // 微秒精度: 16位数字, 不能有科学计数法
-        $us = Carbon::now()->getPreciseTimestamp(6);
-        $str = Base::toString($us);
+        // 不含科学计数法
+        $str = Base::toString(Carbon::now()->getPreciseTimestamp(6));
         $this->assertSame(16, strlen($str));
-        $this->assertFalse(strpos($str, 'E') !== false, 'toString不应包含E');
-        $this->assertFalse(strpos($str, 'e') !== false, 'toString不应包含e');
-        $this->assertSame($us, (float)$str, '微秒时间戳toString后值不变');
-
-        // 毫秒精度: 13位数字
-        $ms = Carbon::now()->getPreciseTimestamp(3);
-        $str = Base::toString($ms);
-        $this->assertSame(13, strlen($str));
-        $this->assertSame($ms, (float)$str, '毫秒时间戳toString后值不变');
-
-        // 秒级精度
-        $s = Carbon::now()->getPreciseTimestamp(0);
-        $str = Base::toString($s);
-        $this->assertSame(10, strlen($str));
-        $this->assertSame($s, (float)$str, '秒级时间戳toString后值不变');
-        $this->assertTrue(abs(time() - (int)$str) <= 1);
+        $this->assertFalse(strpos($str, 'E') !== false);
+        $this->assertFalse(strpos($str, 'e') !== false);
 
         // toString 结果可以正确往返 conv
-        $usStr = Base::toString(Carbon::now()->getPreciseTimestamp(6));
-        $b62 = Base::to62($usStr);
+        $b62 = Base::to62($str);
         $back = Base::conv($b62, '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz', '0123456789');
-        $this->assertSame($usStr, $back);
+        $this->assertSame($str, $back);
 
         // 小值 float 不丢失
         $this->assertSame('1', Base::toString(1.0));
         $this->assertSame('0', Base::toString(0.0));
         $this->assertSame('1000000', Base::toString(1000000.0));
+    }
+
+    public function testToStringCarbonFixedTimestamps()
+    {
+        // 用固定时间点构造 Carbon, 验证 toString 与 format 基准值完全一致
+        // 仅选择 2001 年之后的时间, 确保秒部分始终为 10 位, 与 getPreciseTimestamp 的数字值对齐
+        $timestamps = [
+            '2001-09-09 01:46:40.000000',
+            '2001-09-09 01:46:40.000001',
+            '2001-09-09 01:46:40.100000',
+            '2001-09-09 01:46:40.999999',
+            '2010-03-15 08:20:30.654321',
+            '2020-01-01 00:00:00.000000',
+            '2025-06-15 12:30:45.123456',
+            '2030-12-31 23:59:59.999999',
+            '2038-01-19 03:14:07.999999',
+            '2050-01-01 00:00:00.500000',
+        ];
+
+        foreach ($timestamps as $ts) {
+            $c = Carbon::parse($ts, 'UTC');
+            $expected = $c->format('U') . $c->format('u');
+            $actual = Base::toString($c->getPreciseTimestamp(6));
+            $this->assertSame($expected, $actual, "固定时间 {$ts} toString与format基准值不一致");
+        }
+    }
+
+    public function testToStringCarbonPreciseTimestampMs()
+    {
+        // 毫秒精度: Carbon 内部使用 round(), format 截取前3位微秒
+        // 用同一个 Carbon 实例, 手动 round 模拟 Carbon 行为来验证
+        for ($i = 0; $i < 10; $i++) {
+            $c = Carbon::now();
+            $float = $c->getPreciseTimestamp(3);
+            $str = Base::toString($float);
+
+            // toString 结果必须是纯数字
+            $this->assertSame(1, preg_match('/^\d+$/', $str), '毫秒时间戳应为纯数字');
+            $this->assertSame(13, strlen($str), '毫秒时间戳应为13位');
+
+            // float 值与 toString 结果互转一致
+            $this->assertSame(sprintf('%.0f', $float), $str);
+
+            usleep(1000);
+        }
+    }
+
+    public function testToStringCarbonPreciseTimestampSeconds()
+    {
+        // 秒级精度: 用固定 Carbon 实例避免跨秒边界
+        $timestamps = [
+            '2025-01-01 00:00:00.000000',
+            '2025-06-15 12:30:45.000000',
+            '2030-12-31 23:59:59.000000',
+            '2038-01-19 03:14:07.000000',
+        ];
+
+        foreach ($timestamps as $ts) {
+            $c = Carbon::parse($ts, 'UTC');
+            $expected = $c->format('U');
+            $actual = Base::toString($c->getPreciseTimestamp(0));
+            $this->assertSame($expected, $actual, "秒级时间戳 {$ts} 应与format(U)一致");
+            $this->assertSame(10, strlen($actual));
+        }
+    }
+
+    public function testToStringCarbonConvRoundTrip()
+    {
+        // Carbon 微秒时间戳 -> toString -> to62 -> 还原, 验证全链路无损
+        $dec = '0123456789';
+        $b36 = '0123456789abcdefghijklmnopqrstuvwxyz';
+        $b62 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+
+        for ($i = 0; $i < 10; $i++) {
+            $c = Carbon::now();
+            $expected = $c->format('U') . $c->format('u');
+            $str = Base::toString($c->getPreciseTimestamp(6));
+            $this->assertSame($expected, $str);
+
+            // to36 往返
+            $encoded36 = Base::conv($str, $dec, $b36);
+            $decoded36 = Base::conv($encoded36, $b36, $dec);
+            $this->assertSame($str, $decoded36, 'to36往返应无损');
+
+            // to62 往返
+            $encoded62 = Base::to62($str);
+            $decoded62 = Base::conv($encoded62, $b62, $dec);
+            $this->assertSame($str, $decoded62, 'to62往返应无损');
+
+            usleep(1000);
+        }
+    }
+
+    public function testToStringFloatNoScientificNotation()
+    {
+        // 所有整数 float 经 toString 后不应包含科学计数法
+        $cases = [
+            1e6,
+            1e10,
+            1e12,
+            1e15,
+            123456789012345.0,
+            999999999999999.0,
+            1000000000000000.0,
+            9007199254740992.0,  // 2^53, float能精确表示的最大整数
+        ];
+
+        foreach ($cases as $float) {
+            $str = Base::toString($float);
+            $this->assertFalse(strpos($str, 'E') !== false, "toString({$float})不应包含E");
+            $this->assertFalse(strpos($str, 'e') !== false, "toString({$float})不应包含e");
+            $this->assertSame(1, preg_match('/^-?\d+$/', $str), "toString({$float})应为纯数字");
+            // 转回 float 值不变
+            $this->assertTrue($float == (float)$str, "toString({$float})转回float应一致");
+        }
+    }
+
+    public function testToStringFloatIntegerBoundary()
+    {
+        // 2^53 是 float 能精确表示整数的边界
+        $pow253 = 9007199254740992.0;
+        $this->assertSame('9007199254740992', Base::toString($pow253));
+        $this->assertSame('-9007199254740992', Base::toString(-$pow253));
+
+        // 2^53 - 1
+        $this->assertSame('9007199254740991', Base::toString(9007199254740991.0));
+
+        // 常见整数 float
+        $this->assertSame('0', Base::toString(0.0));
+        $this->assertSame('1', Base::toString(1.0));
+        $this->assertSame('-1', Base::toString(-1.0));
+        $this->assertSame('100', Base::toString(100.0));
+        $this->assertSame('999999', Base::toString(999999.0));
+        $this->assertSame('1000000000', Base::toString(1e9));
+    }
+
+    public function testToStringFloatNonInteger()
+    {
+        // 非整数 float 走 strval 分支, 保留小数
+        $this->assertSame('1.5', Base::toString(1.5));
+        $this->assertSame('0.1', Base::toString(0.1));
+        $this->assertSame('-3.14', Base::toString(-3.14));
+        $this->assertSame('INF', Base::toString(INF));
+        $this->assertSame('-INF', Base::toString(-INF));
+        $this->assertSame('NAN', @Base::toString(NAN));
+    }
+
+    public function testToStringCarbonCreateFromTimestampMs()
+    {
+        // 用 createFromTimestampMs 构造特定毫秒时间戳, 验证 toString
+        $knownMs = [
+            1000000000000,  // 2001-09-09
+            1234567890123,
+            1700000000000,
+            1750000000000,
+            1800000000000,
+        ];
+
+        foreach ($knownMs as $ms) {
+            $c = Carbon::createFromTimestampMs($ms, 'UTC');
+            $float = $c->getPreciseTimestamp(3);
+            $str = Base::toString($float);
+
+            $this->assertSame(13, strlen($str), "毫秒时间戳 {$ms} 应为13位");
+            $this->assertSame(1, preg_match('/^\d{13}$/', $str), "毫秒时间戳 {$ms} 应为纯数字");
+            // 回转验证
+            $this->assertSame(sprintf('%.0f', $float), $str);
+        }
+    }
+
+    public function testToStringCarbonEpochBoundary()
+    {
+        // Unix epoch: getPreciseTimestamp(6) = 0.0, toString = '0'
+        $c = Carbon::createFromTimestamp(0, 'UTC');
+        $this->assertSame('0', Base::toString($c->getPreciseTimestamp(0)));
+        $this->assertSame('0', Base::toString($c->getPreciseTimestamp(6)));
+
+        // timestamp = 1: getPreciseTimestamp(6) = 1000000.0
+        $c1 = Carbon::createFromTimestamp(1, 'UTC');
+        $this->assertSame('1', Base::toString($c1->getPreciseTimestamp(0)));
+        $this->assertSame('1000', Base::toString($c1->getPreciseTimestamp(3)));
+        $this->assertSame('1000000', Base::toString($c1->getPreciseTimestamp(6)));
+
+        // 2001-09-09 01:46:40 UTC = timestamp 1000000000, 10位秒级时间戳的起点
+        // 从此刻开始 format('U').format('u') 与 toString(getPreciseTimestamp(6)) 字面一致
+        $c2 = Carbon::parse('2001-09-09 01:46:40.123456', 'UTC');
+        $expected = $c2->format('U') . $c2->format('u');
+        $actual = Base::toString($c2->getPreciseTimestamp(6));
+        $this->assertSame($expected, $actual);
+        $this->assertSame(16, strlen($actual));
     }
 
     public static function invalidDecimalNumberProvider(): array
