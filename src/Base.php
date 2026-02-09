@@ -306,6 +306,10 @@ class Base
             return strval($digital);
         }
 
+        if (is_float($digital) && is_finite($digital) && $digital == floor($digital)) {
+            return sprintf('%.0f', $digital);
+        }
+
         return strval($digital);
     }
 

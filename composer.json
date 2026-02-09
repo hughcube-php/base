@@ -15,6 +15,7 @@
     "require-dev": {
         "ext-gmp": "*",
         "ext-bcmath": "*",
+        "nesbot/carbon": "*",
         "phpstan/phpstan": "*",
         "phpunit/phpunit": "*",
         "squizlabs/php_codesniffer": "*"

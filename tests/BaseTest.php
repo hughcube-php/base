@@ -2,6 +2,7 @@
 
 namespace HughCube\Base\Tests;
 
+use Carbon\Carbon;
 use HughCube\Base\Base;
 use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
@@ -3696,6 +3697,54 @@ class BaseTest extends TestCase
         $this->assertSame('123', Base::toStringWithPad('123456', 3));
     }
 
+    public function testToStringCarbonGetPreciseTimestamp()
+    {
+        $carbon = Carbon::now();
+
+        // getPreciseTimestamp 返回 float, toString 转换后值不变
+        foreach ([0, 3, 6] as $precision) {
+            $float = $carbon->getPreciseTimestamp($precision);
+            $this->assertIsFloat($float);
+
+            $str = Base::toString($float);
+            $this->assertMatchesRegularExpression('/^-?\d+$/', $str, "precision={$precision} toString结果应为纯数字");
+            // 转换回 float 后值必须一致, 证明 toString 无精度丢失
+            $this->assertSame($float, (float)$str, "precision={$precision} toString转换后值应与原始float一致");
+        }
+
+        // 微秒精度: 16位数字, 不能有科学计数法
+        $us = Carbon::now()->getPreciseTimestamp(6);
+        $str = Base::toString($us);
+        $this->assertSame(16, strlen($str));
+        $this->assertStringNotContainsString('E', $str);
+        $this->assertStringNotContainsString('e', $str);
+        $this->assertSame($us, (float)$str, '微秒时间戳toString后值不变');
+
+        // 毫秒精度: 13位数字
+        $ms = Carbon::now()->getPreciseTimestamp(3);
+        $str = Base::toString($ms);
+        $this->assertSame(13, strlen($str));
+        $this->assertSame($ms, (float)$str, '毫秒时间戳toString后值不变');
+
+        // 秒级精度
+        $s = Carbon::now()->getPreciseTimestamp(0);
+        $str = Base::toString($s);
+        $this->assertSame(10, strlen($str));
+        $this->assertSame($s, (float)$str, '秒级时间戳toString后值不变');
+        $this->assertEqualsWithDelta(time(), (int)$str, 1);
+
+        // toString 结果可以正确往返 conv
+        $usStr = Base::toString(Carbon::now()->getPreciseTimestamp(6));
+        $b62 = Base::to62($usStr);
+        $back = Base::conv($b62, '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz', '0123456789');
+        $this->assertSame($usStr, $back);
+
+        // 小值 float 不丢失
+        $this->assertSame('1', Base::toString(1.0));
+        $this->assertSame('0', Base::toString(0.0));
+        $this->assertSame('1000000', Base::toString(1000000.0));
+    }
+
     public static function invalidDecimalNumberProvider(): array
     {
         return [
@@ -3717,4 +3766,5 @@ class BaseTest extends TestCase
             ['INF'],
         ];
     }
+
 }
