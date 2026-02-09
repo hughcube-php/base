@@ -3704,10 +3704,10 @@ class BaseTest extends TestCase
         // getPreciseTimestamp 返回 float, toString 转换后值不变
         foreach ([0, 3, 6] as $precision) {
             $float = $carbon->getPreciseTimestamp($precision);
-            $this->assertIsFloat($float);
+            $this->assertTrue(is_float($float));
 
             $str = Base::toString($float);
-            $this->assertMatchesRegularExpression('/^-?\d+$/', $str, "precision={$precision} toString结果应为纯数字");
+            $this->assertSame(1, preg_match('/^-?\d+$/', $str), "precision={$precision} toString结果应为纯数字");
             // 转换回 float 后值必须一致, 证明 toString 无精度丢失
             $this->assertSame($float, (float)$str, "precision={$precision} toString转换后值应与原始float一致");
         }
@@ -3716,8 +3716,8 @@ class BaseTest extends TestCase
         $us = Carbon::now()->getPreciseTimestamp(6);
         $str = Base::toString($us);
         $this->assertSame(16, strlen($str));
-        $this->assertStringNotContainsString('E', $str);
-        $this->assertStringNotContainsString('e', $str);
+        $this->assertFalse(strpos($str, 'E') !== false, 'toString不应包含E');
+        $this->assertFalse(strpos($str, 'e') !== false, 'toString不应包含e');
         $this->assertSame($us, (float)$str, '微秒时间戳toString后值不变');
 
         // 毫秒精度: 13位数字
@@ -3731,7 +3731,7 @@ class BaseTest extends TestCase
         $str = Base::toString($s);
         $this->assertSame(10, strlen($str));
         $this->assertSame($s, (float)$str, '秒级时间戳toString后值不变');
-        $this->assertEqualsWithDelta(time(), (int)$str, 1);
+        $this->assertTrue(abs(time() - (int)$str) <= 1);
 
         // toString 结果可以正确往返 conv
         $usStr = Base::toString(Carbon::now()->getPreciseTimestamp(6));
